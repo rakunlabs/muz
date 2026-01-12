@@ -10,20 +10,45 @@ import (
 	"strings"
 )
 
-type iterInfo struct {
+type Muzo struct {
 	Dir   string
-	Files []string
+	Files []FileInfo
+
+	fs fs.FS
+}
+
+type FileInfo struct {
+	Path    string
+	Version int
+}
+
+func (d *Muzo) ReadFile(filePath string) ([]byte, error) {
+	return fs.ReadFile(d.fs, filePath)
+}
+
+func (d *Muzo) Open(filePath string) (fs.File, error) {
+	return d.fs.Open(filePath)
 }
 
 // iterMigrationInfo returns an iterator over the migration files.
 // It yields slices of file paths grouped by directory, respecting Order and Skip settings.
-func (m *Migrate) iterMigrationInfo() iter.Seq2[*iterInfo, error] {
-	return func(yield func(*iterInfo, error) bool) {
+func (m *Migrate) iterMigrationInfo() iter.Seq2[*Muzo, error] {
+	return func(yield func(*Muzo, error) bool) {
+		path := m.Path
+		if path == "" {
+			path = "migrations"
+		}
+
 		var fileSystem fs.FS
 		if m.EmbedPath != nil {
-			fileSystem = m.EmbedPath
+			var err error
+			fileSystem, err = fs.Sub(m.EmbedPath, path)
+			if err != nil {
+				yield(nil, err)
+				return
+			}
 		} else {
-			fileSystem = os.DirFS(m.Path)
+			fileSystem = os.DirFS(path)
 		}
 
 		// Get all directories
@@ -46,9 +71,10 @@ func (m *Migrate) iterMigrationInfo() iter.Seq2[*iterInfo, error] {
 				continue
 			}
 
-			if !yield(&iterInfo{
+			if !yield(&Muzo{
 				Dir:   dir,
 				Files: files,
+				fs:    fileSystem,
 			}, nil) {
 				return
 			}
@@ -127,13 +153,13 @@ func (m *Migrate) sortDirs(dirs []string) []string {
 }
 
 // getMigrationFiles returns all files in the given directory, sorted alphabetically.
-func (m *Migrate) getMigrationFiles(fileSystem fs.FS, dir string) ([]string, error) {
+func (m *Migrate) getMigrationFiles(fileSystem fs.FS, dir string) ([]FileInfo, error) {
 	entries, err := fs.ReadDir(fileSystem, dir)
 	if err != nil {
 		return nil, err
 	}
 
-	var files []string
+	var files []FileInfo
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -146,7 +172,10 @@ func (m *Migrate) getMigrationFiles(fileSystem fs.FS, dir string) ([]string, err
 
 		// Only include files that start with a number
 		if n, _ := extractLeadingNumber(name); n > 0 {
-			files = append(files, filepath.Join(dir, name))
+			files = append(files, FileInfo{
+				Path:    name,
+				Version: n,
+			})
 		}
 	}
 
@@ -158,10 +187,10 @@ func (m *Migrate) getMigrationFiles(fileSystem fs.FS, dir string) ([]string, err
 // sortMigrationFiles sorts files by their leading number prefix, then alphabetically.
 // Files like 001_xx, 01xyz, 1abvc are treated as having the same number (1).
 // If no leading number exists, it defaults to 1.
-func sortMigrationFiles(files []string) {
-	slices.SortFunc(files, func(a, b string) int {
-		aNum, aName := extractLeadingNumber(filepath.Base(a))
-		bNum, bName := extractLeadingNumber(filepath.Base(b))
+func sortMigrationFiles(files []FileInfo) {
+	slices.SortFunc(files, func(a, b FileInfo) int {
+		aNum, aName := extractLeadingNumber(filepath.Base(a.Path))
+		bNum, bName := extractLeadingNumber(filepath.Base(b.Path))
 
 		if aNum != bNum {
 			return aNum - bNum

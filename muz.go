@@ -2,46 +2,15 @@ package muz
 
 import (
 	"context"
-	"fmt"
 	"io/fs"
-	"os"
+	"iter"
 )
-
-type status string
-
-const (
-	StatusStart   status = "start"
-	StatusProcess status = "process"
-	StatusEnd     status = "end"
-)
-
-type Muzo struct {
-	FilePath string `cfg:"filename" json:"filename"`
-
-	embedPath fs.FS `cfg:"-" json:"-"`
-}
-
-func (d *Muzo) ReadFile() ([]byte, error) {
-	if d.embedPath != nil {
-		return fs.ReadFile(d.embedPath, d.FilePath)
-	}
-
-	return os.ReadFile(d.FilePath)
-}
-
-func (d *Muzo) Open() (fs.File, error) {
-	if d.embedPath != nil {
-		return d.embedPath.Open(d.FilePath)
-	}
-
-	return os.Open(d.FilePath)
-}
 
 // /////////////////////////////////
 
 type Migrate struct {
 	// Path to the directory containing migration files.
-	//  - Default: "./migrations"
+	//  - Default: "migrations"
 	Path string `cfg:"path" json:"path"`
 	// EmbedPath if set, use this embedded filesystem instead of reading from Path.
 	EmbedPath fs.FS `cfg:"-" json:"-"`
@@ -64,46 +33,25 @@ type Migrate struct {
 	Extension string `cfg:"extension" json:"extension"`
 }
 
-func (m *Migrate) setDefaults() error {
-	if m.Path == "" {
-		m.Path = "./migrations"
-	}
-
-	return nil
+func (m Migrate) Migrations() iter.Seq2[*Muzo, error] {
+	return m.iterMigrationInfo()
 }
 
-func (m *Migrate) Migrate(ctx context.Context, apply func(ctx context.Context, status status, data *Muzo) error) error {
-	if err := m.setDefaults(); err != nil {
+func (m Migrate) Migrate(ctx context.Context, driver Driver) (err error) {
+	if err := driver.Start(ctx); err != nil {
 		return err
 	}
 
-	if err := apply(ctx, StatusStart, nil); err != nil {
-		return fmt.Errorf("migrate start: %w", err)
-	}
+	defer driver.End(ctx, err)
 
-	for info, err := range m.iterMigrationInfo() {
+	for info, err := range m.Migrations() {
 		if err != nil {
 			return err
 		}
 
-		if ctx.Err() != nil {
-			return ctx.Err()
+		if err := driver.Process(ctx, info); err != nil {
+			return err
 		}
-
-		for _, file := range info.Files {
-			data := &Muzo{
-				FilePath:  file,
-				embedPath: m.EmbedPath,
-			}
-
-			if err := apply(ctx, StatusProcess, data); err != nil {
-				return err
-			}
-		}
-	}
-
-	if err := apply(ctx, StatusEnd, nil); err != nil {
-		return fmt.Errorf("migrate end: %w", err)
 	}
 
 	return nil
