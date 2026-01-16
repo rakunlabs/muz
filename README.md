@@ -15,8 +15,8 @@ go get github.com/rakunlabs/muz
 ## Usage
 
 Set a custom driver that implements the `muz.Driver` interface for your storage.  
-Predefined drivers:
-- `muz.PostgresDriver` - PostgreSQL
+Predefined drivers:  
+__-__ `muz.PostgresDriver` - PostgreSQL
 
 ```go
 //	"github.com/rakunlabs/muz"
