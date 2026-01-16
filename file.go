@@ -23,11 +23,11 @@ type FileInfo struct {
 }
 
 func (d *Muzo) ReadFile(filePath string) ([]byte, error) {
-	return fs.ReadFile(d.fs, filePath)
+	return fs.ReadFile(d.fs, filepath.Join(d.Dir, filePath))
 }
 
 func (d *Muzo) Open(filePath string) (fs.File, error) {
-	return d.fs.Open(filePath)
+	return d.fs.Open(filepath.Join(d.Dir, filePath))
 }
 
 // iterMigrationInfo returns an iterator over the migration files.
@@ -40,9 +40,9 @@ func (m *Migrate) iterMigrationInfo() iter.Seq2[*Muzo, error] {
 		}
 
 		var fileSystem fs.FS
-		if m.EmbedPath != nil {
+		if m.FS != nil {
 			var err error
-			fileSystem, err = fs.Sub(m.EmbedPath, path)
+			fileSystem, err = fs.Sub(m.FS, path)
 			if err != nil {
 				yield(nil, err)
 				return
@@ -92,11 +92,6 @@ func (m *Migrate) getMigrationDirs(fileSystem fs.FS) ([]string, error) {
 		}
 
 		if !d.IsDir() {
-			return nil
-		}
-
-		// Skip root directory
-		if path == "." {
 			return nil
 		}
 

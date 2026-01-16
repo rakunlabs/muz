@@ -17,19 +17,21 @@ type Driver interface {
 type PostgresDriver struct {
 	// DB is the database connection to use for migrations.
 	DB *sql.DB
-	// TableName is the name of the migration tracking table.
-	TableName string
+	// Table is the name of the migration tracking table.
+	Table string
+	// Logger if set, used to log migration progress.
+	Logger Logger
 
 	// tx is the current transaction, if any.
 	tx *sql.Tx
 }
 
 func (p *PostgresDriver) tableName() string {
-	if p.TableName == "" {
+	if p.Table == "" {
 		return "migrations"
 	}
 
-	return p.TableName
+	return p.Table
 }
 
 func (p *PostgresDriver) Start(ctx context.Context) error {
@@ -48,6 +50,10 @@ func (p *PostgresDriver) Start(ctx context.Context) error {
 			UNIQUE(version, directory)
 		)
 	`, p.tableName())
+
+	if p.Logger != nil {
+		p.Logger.Info("starting migration", "table", p.tableName())
+	}
 
 	_, err = p.tx.ExecContext(ctx, query)
 	return err
@@ -82,9 +88,13 @@ func (p *PostgresDriver) Process(ctx context.Context, data *Muzo) error {
 			return err
 		}
 
+		if p.Logger != nil {
+			p.Logger.Info("applying migration", "version", file.Version, "directory", directory, "file", file.Path)
+		}
+
 		// Execute migration SQL
 		if _, err := p.tx.ExecContext(ctx, string(content)); err != nil {
-			return fmt.Errorf("applying migration %s: %w", file.Path, err)
+			return fmt.Errorf("applying migration %d - %s - %s: %w", file.Version, directory, file.Path, err)
 		}
 
 		// Record applied migration
@@ -105,6 +115,10 @@ func (p *PostgresDriver) End(ctx context.Context, err error) error {
 	if p.tx != nil {
 		if err != nil {
 			return p.tx.Rollback()
+		}
+
+		if p.Logger != nil {
+			p.Logger.Info("migrations applied successfully")
 		}
 
 		return p.tx.Commit()

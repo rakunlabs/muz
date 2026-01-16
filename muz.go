@@ -12,8 +12,8 @@ type Migrate struct {
 	// Path to the directory containing migration files.
 	//  - Default: "migrations"
 	Path string `cfg:"path" json:"path"`
-	// EmbedPath if set, use this embedded filesystem instead of reading from Path.
-	EmbedPath fs.FS `cfg:"-" json:"-"`
+	// FS if set, use this embedded filesystem instead of reading from Path.
+	FS fs.FS `cfg:"-" json:"-"`
 
 	// Order of directory names to apply migrations from.
 	//  - Default: []string{}

@@ -27,6 +27,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "001_init", Files: []FileInfo{
 					{Path: "001_create_users.sql", Version: 1},
 					{Path: "002_create_posts.sql", Version: 2},
@@ -47,6 +48,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "001_first", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 				{Dir: "002_second", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 				{Dir: "003_third", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
@@ -71,6 +73,7 @@ func TestIterMigrationInfo(t *testing.T) {
 			want: []Muzo{
 				{Dir: "gamma", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 				{Dir: "alpha", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "beta", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 			},
 		},
@@ -91,6 +94,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "keep1", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 				{Dir: "keep2", Files: []FileInfo{{Path: "001_migration.sql", Version: 1}}},
 			},
@@ -111,6 +115,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "migrations", Files: []FileInfo{{Path: "001_valid.sql", Version: 1}, {Path: "003_also_valid.sql", Version: 3}}},
 			},
 		},
@@ -127,6 +132,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "migrations", Files: []FileInfo{{Path: "001_valid.sql", Version: 1}}},
 			},
 		},
@@ -143,6 +149,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "migrations", Files: []FileInfo{{Path: "1_first.sql", Version: 1}, {Path: "2_second.sql", Version: 2}, {Path: "10_tenth.sql", Version: 10}}},
 			},
 		},
@@ -160,6 +167,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "parent", Files: []FileInfo{{Path: "001_parent.sql", Version: 1}}},
 				{Dir: "parent/child", Files: []FileInfo{{Path: "001_child.sql", Version: 1}}},
 			},
@@ -174,11 +182,12 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "empty", Files: []FileInfo{}},
 			},
 		},
 		{
-			name: "no directories returns empty result",
+			name: "root level files are included",
 			setup: func(t *testing.T, tempDir string) {
 				// Just create root-level files, no subdirectories
 				mustCreateFile(t, filepath.Join(tempDir, "001_root.sql"))
@@ -186,7 +195,9 @@ func TestIterMigrationInfo(t *testing.T) {
 			migrate: func(tempDir string) *Migrate {
 				return &Migrate{Path: tempDir}
 			},
-			want: []Muzo{},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{{Path: "001_root.sql", Version: 1}}},
+			},
 		},
 		{
 			name: "skip nested directory and its children",
@@ -208,6 +219,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "keep", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}}},
 			},
 		},
@@ -224,6 +236,7 @@ func TestIterMigrationInfo(t *testing.T) {
 				return &Migrate{Path: tempDir}
 			},
 			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
 				{Dir: "migrations", Files: []FileInfo{{Path: "001_alpha.sql", Version: 1}, {Path: "001_beta.sql", Version: 1}, {Path: "001_zebra.sql", Version: 1}}},
 			},
 		},
