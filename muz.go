@@ -21,10 +21,14 @@ type Migrate struct {
 	//  - If set, give priority to the listed directories in the specified order.
 	//    Directories not listed will be applied afterwards in alphabetical order.
 	Order []string `cfg:"order" json:"order"`
-	// Skip directories to ignore during migration.
+	// Skip patterns to ignore during migration (supports glob patterns).
 	//  - Default: []string{}
-	//  - Directories listed here will be skipped entirely.
-	//  - Should be given /test/dir1 format, relative to the migration path.
+	//  - Supports glob patterns using doublestar syntax:
+	//    - /test/** matches test directory and all contents recursively
+	//    - /test/* matches only direct children of test (files and immediate subdirectories)
+	//    - **/*.sql matches all .sql files in any directory
+	//  - Can skip both files and directories.
+	//  - Paths should be given in /test/dir1 format, relative to the migration path.
 	Skip []string `cfg:"skip" json:"skip"`
 
 	// Extension of migration files.

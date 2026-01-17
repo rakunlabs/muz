@@ -39,7 +39,7 @@ func migration(ctx context.Context) error {
 		FS:        migrationsFS, // optional: if not set, uses os.DirFS
 		Extension: ".sql", // optional: default not set and supports all files
 		// Order: []string{"schema", "data"}, // optional: prioritize specific directories
-		// Skip:  []string{"/test"},          // optional: skip directories
+		// Skip:  []string{"/test"},          // optional: skip directories and files, supports glob patterns like "/test/*" or "/test/**" for recursive
 	}
 
 	driver := &muz.PostgresDriver{

@@ -3,6 +3,7 @@ module github.com/rakunlabs/muz
 go 1.24.0
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.9.2
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/testcontainers/testcontainers-go v0.40.0
 )

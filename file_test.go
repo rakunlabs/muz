@@ -240,6 +240,137 @@ func TestIterMigrationInfo(t *testing.T) {
 				{Dir: "migrations", Files: []FileInfo{{Path: "001_alpha.sql", Version: 1}, {Path: "001_beta.sql", Version: 1}, {Path: "001_zebra.sql", Version: 1}}},
 			},
 		},
+		{
+			name: "skip with recursive glob pattern /**",
+			setup: func(t *testing.T, tempDir string) {
+				// Create test directory with nested structure
+				test := filepath.Join(tempDir, "test")
+				testChild := filepath.Join(test, "child")
+				keep := filepath.Join(tempDir, "keep")
+				mustMkdir(t, test)
+				mustMkdir(t, testChild)
+				mustMkdir(t, keep)
+				mustCreateFile(t, filepath.Join(test, "001_test.sql"))
+				mustCreateFile(t, filepath.Join(testChild, "001_child.sql"))
+				mustCreateFile(t, filepath.Join(keep, "001_keep.sql"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"/test/**"},
+				}
+			},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
+				{Dir: "keep", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}}},
+			},
+		},
+		{
+			name: "skip with single level glob pattern /*",
+			setup: func(t *testing.T, tempDir string) {
+				// Create test directory with nested structure
+				test := filepath.Join(tempDir, "test")
+				testChild := filepath.Join(test, "child")
+				testGrandchild := filepath.Join(testChild, "grandchild")
+				mustMkdir(t, test)
+				mustMkdir(t, testChild)
+				mustMkdir(t, testGrandchild)
+				mustCreateFile(t, filepath.Join(test, "001_test.sql"))
+				mustCreateFile(t, filepath.Join(testChild, "001_child.sql"))
+				mustCreateFile(t, filepath.Join(testGrandchild, "001_grandchild.sql"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"/test/*"},
+				}
+			},
+			want: []Muzo{
+				// test/* skips direct children (test/001_test.sql, test/child)
+				// but test itself is still included, and grandchild is not a direct child of test
+				{Dir: ".", Files: []FileInfo{}},
+				{Dir: "test", Files: []FileInfo{}},
+				{Dir: "test/child/grandchild", Files: []FileInfo{{Path: "001_grandchild.sql", Version: 1}}},
+			},
+		},
+		{
+			name: "skip files with glob pattern",
+			setup: func(t *testing.T, tempDir string) {
+				dir := filepath.Join(tempDir, "migrations")
+				mustMkdir(t, dir)
+				mustCreateFile(t, filepath.Join(dir, "001_keep.sql"))
+				mustCreateFile(t, filepath.Join(dir, "002_skip.bak"))
+				mustCreateFile(t, filepath.Join(dir, "003_also_keep.sql"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"**/*.bak"},
+				}
+			},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
+				{Dir: "migrations", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}, {Path: "003_also_keep.sql", Version: 3}}},
+			},
+		},
+		{
+			name: "skip specific file pattern in directory",
+			setup: func(t *testing.T, tempDir string) {
+				dir := filepath.Join(tempDir, "migrations")
+				mustMkdir(t, dir)
+				mustCreateFile(t, filepath.Join(dir, "001_keep.sql"))
+				mustCreateFile(t, filepath.Join(dir, "002_test_skip.sql"))
+				mustCreateFile(t, filepath.Join(dir, "003_keep.sql"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"/migrations/002_test_skip.sql"},
+				}
+			},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
+				{Dir: "migrations", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}, {Path: "003_keep.sql", Version: 3}}},
+			},
+		},
+		{
+			name: "skip files in root with glob pattern",
+			setup: func(t *testing.T, tempDir string) {
+				mustCreateFile(t, filepath.Join(tempDir, "001_keep.sql"))
+				mustCreateFile(t, filepath.Join(tempDir, "002_skip.bak"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"*.bak"},
+				}
+			},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}}},
+			},
+		},
+		{
+			name: "multiple skip patterns",
+			setup: func(t *testing.T, tempDir string) {
+				dir1 := filepath.Join(tempDir, "keep")
+				dir2 := filepath.Join(tempDir, "skip_dir")
+				mustMkdir(t, dir1)
+				mustMkdir(t, dir2)
+				mustCreateFile(t, filepath.Join(dir1, "001_keep.sql"))
+				mustCreateFile(t, filepath.Join(dir1, "002_skip.bak"))
+				mustCreateFile(t, filepath.Join(dir2, "001_skip.sql"))
+			},
+			migrate: func(tempDir string) *Migrate {
+				return &Migrate{
+					Path: tempDir,
+					Skip: []string{"/skip_dir/**", "**/*.bak"},
+				}
+			},
+			want: []Muzo{
+				{Dir: ".", Files: []FileInfo{}},
+				{Dir: "keep", Files: []FileInfo{{Path: "001_keep.sql", Version: 1}}},
+			},
+		},
 	}
 
 	for _, tt := range tests {

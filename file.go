@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 type Muzo struct {
@@ -95,15 +97,17 @@ func (m *Migrate) getMigrationDirs(fileSystem fs.FS) ([]string, error) {
 			return nil
 		}
 
-		// Check if this directory should be skipped
-		for _, skip := range m.Skip {
-			skipPath := strings.TrimPrefix(skip, "/")
-			if path == skipPath || strings.HasPrefix(path, skipPath+"/") {
-				return fs.SkipDir
-			}
+		// Check if this entire directory subtree should be skipped
+		if m.shouldSkipDir(path) {
+			return fs.SkipDir
 		}
 
-		dirs = append(dirs, path)
+		// Check if this specific directory matches a skip pattern
+		// (but we still need to walk into it for potential child matches)
+		if !m.shouldSkip(path) {
+			dirs = append(dirs, path)
+		}
+
 		return nil
 	})
 
@@ -161,6 +165,18 @@ func (m *Migrate) getMigrationFiles(fileSystem fs.FS, dir string) ([]FileInfo, e
 		}
 
 		name := entry.Name()
+
+		// Build the full path for skip pattern matching
+		fullPath := name
+		if dir != "." {
+			fullPath = filepath.Join(dir, name)
+		}
+
+		// Check if this file should be skipped
+		if m.shouldSkip(fullPath) {
+			continue
+		}
+
 		if m.Extension != "" && !strings.HasSuffix(strings.ToLower(name), strings.ToLower(m.Extension)) {
 			continue
 		}
@@ -217,4 +233,45 @@ func extractLeadingNumber(filename string) (int, string) {
 	}
 
 	return num, filename
+}
+
+// shouldSkip checks if the given path should be skipped based on the skip patterns.
+// Supports glob patterns using doublestar syntax:
+//   - /test/** matches test directory and all contents recursively
+//   - /test/* matches only direct children of test
+//   - **/*.sql matches all .sql files in any directory
+func (m *Migrate) shouldSkip(path string) bool {
+	for _, skip := range m.Skip {
+		pattern := strings.TrimPrefix(skip, "/")
+		if matched, _ := doublestar.Match(pattern, path); matched {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldSkipDir checks if a directory should be skipped entirely (including all children).
+// This is used during directory walking to skip entire subtrees.
+// A directory is fully skipped if:
+//   - It matches a pattern like "test" or "test/**" exactly
+//   - The pattern doesn't contain wildcards in a way that could match children differently
+func (m *Migrate) shouldSkipDir(path string) bool {
+	for _, skip := range m.Skip {
+		pattern := strings.TrimPrefix(skip, "/")
+
+		// Check for exact directory match (original behavior for backward compatibility)
+		if pattern == path {
+			return true
+		}
+
+		// Check for recursive glob pattern like "test/**"
+		// If pattern is "dir/**", we can skip the entire dir
+		if strings.HasSuffix(pattern, "/**") {
+			basePattern := strings.TrimSuffix(pattern, "/**")
+			if path == basePattern || strings.HasPrefix(path, basePattern+"/") {
+				return true
+			}
+		}
+	}
+	return false
 }
