@@ -111,4 +111,18 @@ func (tt *testDB) TestMuz(t *testing.T) {
 	if count != expectedMigrations {
 		t.Fatalf("expected %d migrations applied, got %d", expectedMigrations, count)
 	}
+
+	if err := m.Migrate(t.Context(), driver); err != nil {
+		t.Fatalf("Migrate() error: %v", err)
+	}
+
+	// Verify that no new migrations were applied
+	var newCount int
+	if err := tt.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM muz_migrations").Scan(&newCount); err != nil {
+		t.Fatalf("could not query migrations table: %v", err)
+	}
+
+	if newCount != count {
+		t.Fatalf("expected no new migrations applied, but count changed from %d to %d", count, newCount)
+	}
 }

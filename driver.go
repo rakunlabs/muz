@@ -28,6 +28,21 @@ const (
 	DialectMSSQL
 )
 
+func (d Dialect) String() string {
+	switch d {
+	case DialectPostgres:
+		return "PostgreSQL"
+	case DialectMySQL:
+		return "MySQL"
+	case DialectSQLite:
+		return "SQLite"
+	case DialectMSSQL:
+		return "MSSQL"
+	default:
+		return "Unknown"
+	}
+}
+
 // SQLDriver is a generic database driver that supports multiple SQL dialects.
 type SQLDriver struct {
 	// DB is the database connection to use for migrations.
@@ -122,7 +137,7 @@ func (d *SQLDriver) Start(ctx context.Context) error {
 	query := d.createTableSQL()
 
 	if d.Logger != nil {
-		d.Logger.Info("starting migration", "table", d.tableName(), "dialect", d.Dialect)
+		d.Logger.Info("starting migration", "table", d.tableName(), "dialect", d.Dialect.String())
 	}
 
 	_, err = d.tx.ExecContext(ctx, query)
