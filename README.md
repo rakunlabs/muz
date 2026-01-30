@@ -16,7 +16,7 @@ go get github.com/rakunlabs/muz
 
 Set a custom driver that implements the `muz.Driver` interface for your storage.  
 Predefined drivers:  
-__-__ `muz.PostgresDriver` - PostgreSQL
+__-__ `muz.SQLDriver` - SQL databases (PostgreSQL, MySQL, SQLite, MSSQL)
 
 ```go
 //	"github.com/rakunlabs/muz"
@@ -42,10 +42,11 @@ func migration(ctx context.Context) error {
 		// Skip:  []string{"/test"},          // optional: skip directories and files, supports glob patterns like "/test/*" or "/test/**" for recursive
 	}
 
-	driver := &muz.PostgresDriver{
-		DB:    db, // *sql.DB instance
-		Table: "migrations", // migration tracking table name
-		Logger: slog.Default(), // optional: logger instance
+	driver := &muz.SQLDriver{
+		DB:      db, // *sql.DB instance
+		Dialect: muz.DialectPostgres,
+		Table:   "migrations", // migration tracking table name
+		Logger:  slog.Default(), // optional: logger instance
 	}
 
 	if err := m.Migrate(ctx, driver); err != nil {

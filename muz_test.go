@@ -89,10 +89,11 @@ func (tt *testDB) TestMuz(t *testing.T) {
 		FS:   testMigrationsFS,
 	}
 
-	driver := &PostgresDriver{
-		DB:     tt.db,
-		Table:  "muz_migrations",
-		Logger: slog.Default(),
+	driver := &SQLDriver{
+		DB:      tt.db,
+		Dialect: DialectPostgres,
+		Table:   "muz_migrations",
+		Logger:  slog.Default(),
 	}
 
 	if err := m.Migrate(t.Context(), driver); err != nil {
