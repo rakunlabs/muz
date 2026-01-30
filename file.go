@@ -43,11 +43,15 @@ func (m *Migrate) iterMigrationInfo() iter.Seq2[*Muzo, error] {
 
 		var fileSystem fs.FS
 		if m.FS != nil {
-			var err error
-			fileSystem, err = fs.Sub(m.FS, path)
-			if err != nil {
-				yield(nil, err)
-				return
+			if path == "." || path == "/" {
+				fileSystem = m.FS
+			} else {
+				var err error
+				fileSystem, err = fs.Sub(m.FS, path)
+				if err != nil {
+					yield(nil, err)
+					return
+				}
 			}
 		} else {
 			fileSystem = os.DirFS(path)
