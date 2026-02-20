@@ -16,7 +16,8 @@ type Muzo struct {
 	Dir   string
 	Files []FileInfo
 
-	fs fs.FS
+	fs     fs.FS
+	values map[string]string
 }
 
 type FileInfo struct {
@@ -26,6 +27,18 @@ type FileInfo struct {
 
 func (d *Muzo) ReadFile(filePath string) ([]byte, error) {
 	return fs.ReadFile(d.fs, filepath.Join(d.Dir, filePath))
+}
+
+func (d *Muzo) Expand(content string) string {
+	if len(d.values) == 0 {
+		return content
+	}
+
+	expanded := os.Expand(content, func(key string) string {
+		return d.values[key]
+	})
+
+	return expanded
 }
 
 func (d *Muzo) Open(filePath string) (fs.File, error) {
@@ -78,9 +91,10 @@ func (m *Migrate) iterMigrationInfo() iter.Seq2[*Muzo, error] {
 			}
 
 			if !yield(&Muzo{
-				Dir:   dir,
-				Files: files,
-				fs:    fileSystem,
+				Dir:    dir,
+				Files:  files,
+				fs:     fileSystem,
+				values: m.Values,
 			}, nil) {
 				return
 			}

@@ -173,12 +173,14 @@ func (d *SQLDriver) Process(ctx context.Context, data *Muzo) error {
 			return err
 		}
 
+		expandedContent := data.Expand(string(content))
+
 		if d.Logger != nil {
 			d.Logger.Info("applying migration", "version", file.Version, "directory", directory, "file", file.Path)
 		}
 
 		// Execute migration SQL
-		if _, err := d.tx.ExecContext(ctx, string(content)); err != nil {
+		if _, err := d.tx.ExecContext(ctx, expandedContent); err != nil {
 			return fmt.Errorf("applying migration %d - %s - %s: %w", file.Version, directory, file.Path, err)
 		}
 

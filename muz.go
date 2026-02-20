@@ -35,6 +35,14 @@ type Migrate struct {
 	//  - Default: none (all files are considered)
 	//  - Only files with this extension will be considered as migration files.
 	Extension string `cfg:"extension" json:"extension"`
+
+	// Values is a map of key-value pairs for template substitution in migration files.
+	//  - Default: nil (no substitution is performed)
+	//  - When set, file contents read via ReadFile will have $KEY or ${KEY} references
+	//    expanded using os.Expand with only these values.
+	//  - Real environment variables are NOT expanded; only keys present in this map are resolved.
+	//  - Unknown keys expand to an empty string.
+	Values map[string]string `cfg:"values" json:"values"`
 }
 
 func (m Migrate) Migrations() iter.Seq2[*Muzo, error] {
