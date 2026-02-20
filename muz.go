@@ -54,7 +54,13 @@ func (m Migrate) Migrate(ctx context.Context, driver Driver) (err error) {
 		return err
 	}
 
-	defer driver.End(ctx, err)
+	defer func() {
+		if endErr := driver.End(ctx, err); endErr != nil {
+			if err == nil {
+				err = endErr
+			}
+		}
+	}()
 
 	for info, err := range m.Migrations() {
 		if err != nil {
