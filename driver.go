@@ -51,11 +51,19 @@ type SQLDriver struct {
 	Dialect Dialect
 	// Table is the name of the migration tracking table.
 	Table string
+	// LockKey if set, is used to acquire a database-level migration lock.
+	// Use a key that is unique to the database/schema/table being migrated.
+	// SQLite does not support LockKey.
+	LockKey string
 	// Logger if set, used to log migration progress.
 	Logger Logger
 
+	// conn is reserved while a connection-scoped lock is held.
+	conn *sql.Conn
 	// tx is the current transaction, if any.
 	tx *sql.Tx
+	// lockAcquired tracks whether LockKey needs explicit release.
+	lockAcquired bool
 }
 
 func (d *SQLDriver) tableName() string {
@@ -129,18 +137,129 @@ func (d *SQLDriver) createTableSQL() string {
 
 func (d *SQLDriver) Start(ctx context.Context) error {
 	var err error
-	d.tx, err = d.DB.BeginTx(ctx, nil)
+	if d.LockKey != "" {
+		d.conn, err = d.DB.Conn(ctx)
+		if err != nil {
+			return err
+		}
+
+		d.tx, err = d.conn.BeginTx(ctx, nil)
+	} else {
+		d.tx, err = d.DB.BeginTx(ctx, nil)
+	}
 	if err != nil {
+		d.closeConn()
 		return err
 	}
-
-	query := d.createTableSQL()
 
 	if d.Logger != nil {
 		d.Logger.Info("starting migration", "table", d.tableName(), "dialect", d.Dialect.String())
 	}
 
+	if err := d.acquireLock(ctx); err != nil {
+		d.cleanupStarted(ctx)
+		return err
+	}
+
+	query := d.createTableSQL()
 	_, err = d.tx.ExecContext(ctx, query)
+	if err != nil {
+		d.cleanupStarted(ctx)
+	}
+
+	return err
+}
+
+func (d *SQLDriver) acquireLock(ctx context.Context) error {
+	if d.LockKey == "" {
+		return nil
+	}
+
+	if d.Logger != nil {
+		d.Logger.Info("acquiring migration lock", "key", d.LockKey)
+	}
+
+	switch d.Dialect {
+	case DialectPostgres:
+		_, err := d.tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext('muz:' || $1::text))`, d.LockKey)
+		if err != nil {
+			return fmt.Errorf("acquiring migration lock: %w", err)
+		}
+		d.lockAcquired = true
+		return nil
+	case DialectMySQL:
+		var acquired sql.NullInt64
+		err := d.tx.QueryRowContext(ctx, `SELECT GET_LOCK(?, -1)`, d.LockKey).Scan(&acquired)
+		if err != nil {
+			return fmt.Errorf("acquiring migration lock: %w", err)
+		}
+		if !acquired.Valid || acquired.Int64 != 1 {
+			return fmt.Errorf("acquiring migration lock: lock not acquired")
+		}
+		d.lockAcquired = true
+		return nil
+	case DialectMSSQL:
+		_, err := d.tx.ExecContext(ctx, `
+			DECLARE @result int;
+			EXEC @result = sp_getapplock @Resource = @p1, @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = -1;
+			IF @result < 0 THROW 50000, 'failed to acquire migration lock', 1;
+		`, d.LockKey)
+		if err != nil {
+			return fmt.Errorf("acquiring migration lock: %w", err)
+		}
+		d.lockAcquired = true
+		return nil
+	case DialectSQLite:
+		return fmt.Errorf("migration lock key is not supported for SQLite")
+	default:
+		return fmt.Errorf("migration lock key is not supported for %s", d.Dialect.String())
+	}
+}
+
+func (d *SQLDriver) releaseLock(ctx context.Context) error {
+	if d.LockKey == "" || !d.lockAcquired {
+		return nil
+	}
+	defer func() {
+		d.lockAcquired = false
+	}()
+
+	if d.Dialect != DialectMySQL {
+		return nil
+	}
+	if d.conn == nil {
+		return fmt.Errorf("releasing migration lock: connection is closed")
+	}
+
+	var released sql.NullInt64
+	err := d.conn.QueryRowContext(context.WithoutCancel(ctx), `SELECT RELEASE_LOCK(?)`, d.LockKey).Scan(&released)
+	if err != nil {
+		return fmt.Errorf("releasing migration lock: %w", err)
+	}
+	if !released.Valid || released.Int64 != 1 {
+		return fmt.Errorf("releasing migration lock: lock not released")
+	}
+
+	return nil
+}
+
+func (d *SQLDriver) cleanupStarted(ctx context.Context) {
+	if d.tx != nil {
+		_ = d.tx.Rollback()
+		d.tx = nil
+	}
+
+	_ = d.releaseLock(ctx)
+	d.closeConn()
+}
+
+func (d *SQLDriver) closeConn() error {
+	if d.conn == nil {
+		return nil
+	}
+
+	err := d.conn.Close()
+	d.conn = nil
 	return err
 }
 
@@ -201,19 +320,35 @@ func (d *SQLDriver) Process(ctx context.Context, data *Muzo) error {
 }
 
 func (d *SQLDriver) End(ctx context.Context, err error) error {
-	if d.tx != nil {
-		if err != nil {
-			return d.tx.Rollback()
-		}
+	if d.tx == nil {
+		return d.closeConn()
+	}
+
+	tx := d.tx
+	d.tx = nil
+
+	var endErr error
+	if err != nil {
+		endErr = tx.Rollback()
+	} else {
 
 		if d.Logger != nil {
 			d.Logger.Info("migrations applied successfully")
 		}
 
-		return d.tx.Commit()
+		endErr = tx.Commit()
 	}
 
-	return nil
+	releaseErr := d.releaseLock(ctx)
+	closeErr := d.closeConn()
+
+	if endErr != nil {
+		return endErr
+	}
+	if releaseErr != nil {
+		return releaseErr
+	}
+	return closeErr
 }
 
 // //////////////////////////////

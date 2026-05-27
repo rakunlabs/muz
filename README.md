@@ -46,6 +46,7 @@ func migration(ctx context.Context) error {
 		DB:      db, // *sql.DB instance
 		Dialect: muz.DialectPostgres,
 		Table:   "migrations", // migration tracking table name
+		LockKey: "muz:postgres:public:migrations", // optional: serializes concurrent migration runners
 		Logger:  slog.Default(), // optional: logger instance
 	}
 
@@ -60,6 +61,8 @@ func migration(ctx context.Context) error {
 ### Migration Files Structure
 
 Migration files should be named with a leading number prefix (e.g., `001_create_users.sql`, `2_add_index.sql`). Files are sorted by their numeric prefix and executed in order.
+
+Set `SQLDriver.LockKey` when multiple processes may run migrations at the same time. The key should be unique to the database/schema/table being migrated, for example `muz:postgres:public:migrations`. Locking is supported for PostgreSQL, MySQL, and MSSQL; SQLite returns an error if `LockKey` is set.
 
 Example structure:
 
